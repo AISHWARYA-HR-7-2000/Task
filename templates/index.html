@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Co-Viewer</title>
+    <style>
+        /* General styling */
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+
+        #viewer {
+            width: 100%;
+            height: 600px;
+            margin-bottom: 20px;
+        }
+
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            border-radius: 5px;
+            margin-right: 10px;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+
+        #pageIndicator {
+            font-size: 16px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>PDF Co-Viewer</h1>
+    <div id="viewer">
+        <iframe id="pdfViewer" src="/static/sample.pdf#page=1" width="100%" height="600px" frameborder="0" allowfullscreen webkitallowfullscreen mozallowfullscreen msallowfullscreen></iframe>
+    </div>
+    <div id="pageIndicator">
+        Page: <span id="currentPage">1</span> / <span id="totalPages">?</span>
+    </div>
+    <div>
+        <button id="previous" onclick="changePage('previous')" disabled>Previous</button>
+        <button id="next" onclick="changePage('next')" disabled>Next</button>
+        <button id="setAdmin" onclick="setAdmin()">Set Admin</button>
+    </div>
+
+    <!-- Include Socket.IO client -->
+    <script src="https://cdn.socket.io/4.5.1/socket.io.min.js"></script>
+    <script>
+        const socket = io("http://127.0.0.1:8000");  // Ensure this matches your backend endpoint
+        const iframe = document.getElementById("pdfViewer");
+        const currentPageElement = document.getElementById("currentPage");
+        const totalPagesElement = document.getElementById("totalPages");
+        const previousButton = document.getElementById("previous");
+        const nextButton = document.getElementById("next");
+        const setAdminButton = document.getElementById("setAdmin");
+
+        let totalPages = 0;
+        let currentPage = 1;  // Start on page 1
+
+        // Function to change pages
+        function changePage(action) {
+            socket.emit("change_page", action);  // Notify the server
+        }
+
+        // Set the user as admin
+        function setAdmin() {
+            socket.emit("set_admin");
+            alert("You are now the admin.");
+            setAdminButton.disabled = true;  // Disable the button locally
+        }
+
+        socket.on("connect", () => {
+            console.log("Connected to WebSocket server.");
+        });
+
+        socket.on("disconnect", () => {
+            console.log("Disconnected from WebSocket server.");
+        });
+
+        socket.on("sync_page", (page) => {
+            iframe.src = `/static/sample.pdf#page=${page}`;  // Update PDF viewer
+            iframe.contentWindow.location.reload();  // Reload iframe content
+            currentPageElement.textContent = page;  // Update displayed current page
+            currentPage = page;
+
+            // Enable or disable buttons based on page number only for admin
+            if (!setAdminButton.disabled) { 
+                previousButton.disabled = (page === 1);
+                nextButton.disabled = (page === totalPages);
+            } else { 
+                previousButton.disabled = true;  
+                nextButton.disabled = true;      
+            }
+        });
+
+        socket.on("update_navigation_for_admin", (page) => {
+        previousButton.disabled = (page === 1);
+        nextButton.disabled = (page === totalPages);
+        });
+
+        socket.on("update_navigation_for_others", (page) => {
+        previousButton.disabled = true;  
+        nextButton.disabled = true;      
+        });
+
+        socket.on("admin_set", () => {
+        setAdminButton.disabled = true;  // Disable set admin button in other tabs
+        
+        // Disable navigation buttons for other users
+        previousButton.disabled = true;
+        nextButton.disabled = true;
+        });
+
+        socket.on("disable_navigation", () => {
+        previousButton.disabled = true;  
+        nextButton.disabled = true;      
+        });
+
+        socket.on("enable_navigation_for_admin", () => {
+        previousButton.disabled = false;  
+        nextButton.disabled = false;      
+        
+        // Update navigation buttons based on current page for admin only
+        previousButton.disabled = (currentPage === 1);
+        nextButton.disabled = (currentPage === totalPages);
+        });
+
+        // Get the total number of pages from the server
+        socket.on("total_pages", (pages) => {
+            totalPages = pages;
+            totalPagesElement.textContent = totalPages;
+
+            // Enable navigation buttons when total pages are known
+            nextButton.disabled = (currentPage === totalPages);
+        });
+    </script>
+</body>
+</html>
